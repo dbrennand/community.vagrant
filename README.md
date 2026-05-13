@@ -60,6 +60,10 @@ Every voice is important. If you have something on your mind, create an issue or
 
 <!-- List any external resources the collection depends on, for example minimum versions of an OS, libraries, or utilities. Do not list other Ansible collections here. -->
 
+- `vagrant` executable available on the managed node or execution environment running the module
+- `python-vagrant` installed for the Python interpreter used by Ansible
+- A supported Vagrant provider such as VirtualBox, libvirt, or VMware, depending on your configuration
+
 ### Supported connections
 
 <!-- Optional. If your collection supports only specific connection types (such as HTTPAPI, netconf, or others), list them here. -->
@@ -67,6 +71,8 @@ Every voice is important. If you have something on your mind, create an issue or
 ## Included content
 
 <!-- Galaxy will eventually list the module docs within the UI, but until that is ready, you may need to either describe your plugins etc here, or point to an external docsite to cover that information. -->
+
+- `community.vagrant.vagrant`: manage the lifecycle of one or more Vagrant instances
 
 ## Using this collection
 
@@ -77,7 +83,7 @@ Every voice is important. If you have something on your mind, create an issue or
 Before using this collection, you need to install it with the Ansible Galaxy command-line tool:
 
 ```bash
-ansible-galaxy collection install NAMESPACE.COLLECTION_NAME
+ansible-galaxy collection install community.vagrant
 ```
 
 You can also include it in a `requirements.yml` file and install it with `ansible-galaxy collection install -r requirements.yml`, using the format:
@@ -85,26 +91,42 @@ You can also include it in a `requirements.yml` file and install it with `ansibl
 ```yaml
 ---
 collections:
-  - name: NAMESPACE.COLLECTION_NAME
+  - name: community.vagrant
 ```
 
 Note that if you install the collection from Ansible Galaxy, it will not be upgraded automatically when you upgrade the `ansible` package. To upgrade the collection to the latest available version, run the following command:
 
 ```bash
-ansible-galaxy collection install NAMESPACE.COLLECTION_NAME --upgrade
+ansible-galaxy collection install community.vagrant --upgrade
 ```
 
 You can also install a specific version of the collection, for example, if you need to downgrade when something is broken in the latest version (please report an issue in this repository). Use the following syntax to install version `0.1.0`:
 
 ```bash
-ansible-galaxy collection install NAMESPACE.COLLECTION_NAME:==0.1.0
+ansible-galaxy collection install community.vagrant:==0.1.0
 ```
 
 See [Ansible Using collections](https://docs.ansible.com/ansible/devel/user_guide/collections_using.html) for more details.
 
+Example usage:
+
+```yaml
+---
+- hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Start a Vagrant instance
+      community.vagrant.vagrant:
+        state: up
+        workdir: /tmp/molecule/default
+        default_box: bento/ubuntu-22.04
+        instances:
+          - name: instance
+```
+
 ## Release notes
 
-See the [changelog](https://github.com/ansible-collections/REPONAMEHERE/tree/main/CHANGELOG.rst).
+See the [changelog](https://github.com/ansible-collections/community.vagrant/tree/main/CHANGELOG.rst).
 
 ## Roadmap
 
@@ -129,3 +151,5 @@ See the [changelog](https://github.com/ansible-collections/REPONAMEHERE/tree/mai
 GNU General Public License v3.0 or later.
 
 See [LICENSE](https://www.gnu.org/licenses/gpl-3.0.txt) to see the full text.
+
+This collection also includes the migrated `community.vagrant.vagrant` module with its original upstream MIT license notice preserved in the module source.
