@@ -1,0 +1,4 @@
+---
+minor_changes:
+  - Added the `community.vagrant.vagrant` module by migrating the upstream module from `https://github.com/ansible-community/molecule-plugins/blob/main/src/molecule_plugins/vagrant/modules/vagrant.py` as of `molecule-plugins` release `v25.8.12`, while preserving its original license header.
+  - Fixed `ansible-test sanity` issues in the migrated `community.vagrant.vagrant` module so it passes collection sanity validation.
