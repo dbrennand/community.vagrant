@@ -30,7 +30,7 @@ short_description: Manage Vagrant instances
 description:
   - Manage the life cycle of Vagrant instances.
 author:
-  - Cisco Systems, Inc.
+  - Cisco Systems Inc (@cisco)
 requirements:
   - jinja2
   - python-vagrant
