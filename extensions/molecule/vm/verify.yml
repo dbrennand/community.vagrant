@@ -1,0 +1,37 @@
+---
+- name: Verify the created VM
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Check that the generated Vagrantfile exists
+      ansible.builtin.stat:
+        path: "{{ molecule_vm_workdir }}/Vagrantfile"
+      register: vagrantfile_stat
+
+    - name: Assert the Vagrantfile was created
+      ansible.builtin.assert:
+        that:
+          - vagrantfile_stat.stat.exists
+          - vagrantfile_stat.stat.isreg
+
+    - name: Read the generated Vagrantfile
+      ansible.builtin.slurp:
+        src: "{{ molecule_vm_workdir }}/Vagrantfile"
+      register: vagrantfile_content
+
+    - name: Assert the configured box is present in the Vagrantfile
+      ansible.builtin.assert:
+        that:
+          - molecule_vm_box in (vagrantfile_content.content | b64decode)
+
+    - name: Query Vagrant machine status
+      ansible.builtin.command: vagrant status --machine-readable
+      args:
+        chdir: "{{ molecule_vm_workdir }}"
+      register: vagrant_status
+      changed_when: false
+
+    - name: Assert Vagrant reports the VM as running
+      ansible.builtin.assert:
+        that:
+          - "',state,running' in vagrant_status.stdout"

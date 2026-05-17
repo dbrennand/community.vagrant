@@ -1,0 +1,9 @@
+---
+all:
+  hosts:
+    localhost:
+      ansible_connection: local
+  vars:
+    molecule_vm_name: molecule-vm-create
+    molecule_vm_box: bento/ubuntu-25.04
+    molecule_vm_workdir: "{{ lookup('env', 'MOLECULE_EPHEMERAL_DIRECTORY') }}/vagrant/{{ molecule_vm_name }}"

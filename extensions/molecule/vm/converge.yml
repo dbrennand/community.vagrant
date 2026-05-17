@@ -1,0 +1,18 @@
+---
+- name: Confirm the VM remains started
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Re-apply the started state
+      community.vagrant.vm:
+        state: started
+        name: "{{ molecule_vm_name }}"
+        workdir: "{{ molecule_vm_workdir }}"
+        box: "{{ molecule_vm_box }}"
+      register: vm_converge
+
+    - name: Assert the VM is still running
+      ansible.builtin.assert:
+        that:
+          - vm_converge.status is defined
+          - vm_converge.status.state == "running"

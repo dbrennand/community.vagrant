@@ -1,0 +1,26 @@
+---
+- name: Destroy test VM
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Destroy the Vagrant VM
+      community.vagrant.vm:
+        state: absent
+        name: "{{ molecule_vm_name }}"
+        workdir: "{{ molecule_vm_workdir }}"
+        cleanup_workdir: false
+
+    - name: Remove the custom Molecule workdir
+      ansible.builtin.file:
+        path: "{{ molecule_vm_workdir }}"
+        state: absent
+
+    - name: Verify the workdir was removed
+      ansible.builtin.stat:
+        path: "{{ molecule_vm_workdir }}"
+      register: workdir_stat
+
+    - name: Assert the workdir is absent
+      ansible.builtin.assert:
+        that:
+          - not workdir_stat.stat.exists

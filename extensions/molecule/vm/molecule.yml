@@ -1,0 +1,26 @@
+---
+ansible:
+  executor:
+    backend: ansible-playbook
+    args:
+      ansible_playbook:
+        - --inventory=${MOLECULE_SCENARIO_DIRECTORY}/inventory.yml
+  env:
+    ANSIBLE_FORCE_COLOR: "true"
+  cfg:
+    defaults:
+      host_key_checking: false
+  playbooks:
+    create: create.yml
+    converge: converge.yml
+    destroy: destroy.yml
+    verify: verify.yml
+
+scenario:
+  test_sequence:
+    - create
+    - verify
+    - destroy
+
+verifier:
+  name: ansible

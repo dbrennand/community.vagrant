@@ -1,0 +1,26 @@
+---
+- name: Create test VM
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Create and start the Vagrant VM
+      community.vagrant.vm:
+        state: started
+        name: "{{ molecule_vm_name }}"
+        workdir: "{{ molecule_vm_workdir }}"
+        box: "{{ molecule_vm_box }}"
+      register: vm_create
+
+    - name: Debug Vagrant VM creation
+      ansible.builtin.debug:
+        var: vm_create
+
+    - name: Assert the VM was created successfully
+      ansible.builtin.assert:
+        that:
+          - vm_create.changed
+          - vm_create.status is defined
+          - vm_create.status.state == "running"
+          - vm_create.ssh is defined
+          - vm_create.ssh.hostname | length > 0
+          - (vm_create.ssh.port | string) | length > 0
