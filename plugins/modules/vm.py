@@ -210,7 +210,9 @@ changed:
   returned: always
   type: bool
 state:
-  description: Effective VM state after the requested action.
+  description:
+    - Effective VM state after the requested action.
+    - In check mode, this is the predicted post-action VM state.
   returned: always
   type: str
 name:
@@ -230,7 +232,9 @@ status:
       description: Name of the managed machine reported by Vagrant.
       type: str
     state:
-      description: Current Vagrant machine state.
+      description:
+        - Current Vagrant machine state.
+        - In check mode, this remains the current pre-action Vagrant state.
       type: str
     provider:
       description: Provider name reported by Vagrant when available.
@@ -553,6 +557,26 @@ def predict_changed(state, config_changed, status, cleanup_workdir, workdir_exis
     return False
 
 
+def predict_effective_state(state, status):
+    current_state = normalize_state(status.get("state")) or STATE_NOT_CREATED
+
+    if state == "present":
+        return current_state
+    if state == "started":
+        return STATE_RUNNING
+    if state == "stopped":
+        if current_state in STOPPED_STATES or current_state == STATE_NOT_CREATED:
+            return current_state
+        return "poweroff"
+    if state == "restarted":
+        return STATE_RUNNING
+    if state == "provisioned":
+        return STATE_RUNNING
+    if state == "absent":
+        return STATE_NOT_CREATED
+    return current_state
+
+
 def validate_params(module, params):
     state = params["state"]
     name = params["name"]
@@ -693,6 +717,7 @@ def run_module():
             params["cleanup_workdir"],
             workdir_exists,
         )
+        result["state"] = predict_effective_state(params["state"], status)
         if params["state"] in ("started", "restarted", "provisioned") and status.get("state") != STATE_NOT_CREATED:
             ssh = collect_ssh_facts(client, params["name"]) if client else None
             if ssh:
