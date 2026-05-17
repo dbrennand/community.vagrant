@@ -265,6 +265,7 @@ import stat
 import tempfile
 from copy import deepcopy
 from pathlib import Path
+from typing import Any, Dict, Mapping, MutableMapping, Optional, Union
 
 from ansible.module_utils.basic import AnsibleModule
 
@@ -275,9 +276,11 @@ STOPPED_STATES = frozenset(("poweroff", "saved", "aborted", "stopped", "shutoff"
 VALID_NAME = re.compile(r"^[A-Za-z0-9_.-]+$")
 VAGRANTFILE_NAME = "Vagrantfile"
 DISALLOWED_RUBY_STRING_CHARS = ("\0", "\n", "\r", "\t")
+PathLike = Union[str, Path]
+StatusDict = Dict[str, Optional[str]]
 
 
-def managed_workdir_root():
+def managed_workdir_root() -> Path:
     """Return the root directory for module-managed Vagrant workdirs.
 
     Returns:
@@ -287,7 +290,7 @@ def managed_workdir_root():
     return Path.home() / ".cache" / "ansible" / "community.vagrant"
 
 
-def default_workdir(name):
+def default_workdir(name: str) -> Path:
     """Build the default workdir path for a VM name.
 
     Args:
@@ -299,7 +302,7 @@ def default_workdir(name):
     return managed_workdir_root() / name
 
 
-def normalize_state(state):
+def normalize_state(state: object) -> Optional[str]:
     """Normalize a Vagrant state string for internal comparisons.
 
     Args:
@@ -314,7 +317,7 @@ def normalize_state(state):
     return str(state).strip().lower().replace(" ", "_")
 
 
-def disallowed_ruby_string_char(value):
+def disallowed_ruby_string_char(value: str) -> Optional[str]:
     """Find the first disallowed character in a Ruby string literal value.
 
     Args:
@@ -329,7 +332,7 @@ def disallowed_ruby_string_char(value):
     return None
 
 
-def ruby_string(value):
+def ruby_string(value: str) -> str:
     """Render a Python string as a single-quoted Ruby string literal.
 
     Args:
@@ -350,7 +353,7 @@ def ruby_string(value):
     return "'{0}'".format(escaped)
 
 
-def ruby_key(key):
+def ruby_key(key: str) -> str:
     """Render a Ruby hash key from a Python string.
 
     Args:
@@ -364,7 +367,7 @@ def ruby_key(key):
     return "{0} =>".format(ruby_string(key))
 
 
-def ruby_literal(value):
+def ruby_literal(value: Any) -> str:
     """Render a supported Python value as a Ruby literal.
 
     Args:
@@ -394,7 +397,7 @@ def ruby_literal(value):
     raise TypeError("Unsupported Ruby literal value: {0!r}".format(value))
 
 
-def ruby_options(mapping):
+def ruby_options(mapping: Mapping[str, Any]) -> str:
     """Render a mapping as a comma-separated Ruby keyword argument list.
 
     Args:
@@ -406,7 +409,7 @@ def ruby_options(mapping):
     return ", ".join("{0} {1}".format(ruby_key(str(key)), ruby_literal(value)) for key, value in mapping.items())
 
 
-def build_vagrantfile(params):
+def build_vagrantfile(params: Mapping[str, Any]) -> str:
     """Build the authoritative Vagrantfile content for a VM definition.
 
     Args:
@@ -486,7 +489,7 @@ def build_vagrantfile(params):
     return "\n".join(lines)
 
 
-def lstat_path(path):
+def lstat_path(path: PathLike) -> Optional[os.stat_result]:
     """Return `os.lstat` metadata for a path when it exists.
 
     Args:
@@ -502,7 +505,7 @@ def lstat_path(path):
         return None
 
 
-def workdir_cleanup_allowed(path):
+def workdir_cleanup_allowed(path: PathLike) -> bool:
     """Check whether a workdir path is eligible for recursive deletion.
 
     Args:
@@ -529,7 +532,7 @@ def workdir_cleanup_allowed(path):
     return True
 
 
-def ensure_safe_workdir(path):
+def ensure_safe_workdir(path: PathLike) -> Optional[os.stat_result]:
     """Validate that an existing workdir path is a real directory.
 
     Args:
@@ -552,7 +555,7 @@ def ensure_safe_workdir(path):
     return metadata
 
 
-def read_text(path):
+def read_text(path: PathLike) -> Optional[str]:
     """Read a regular file while defending against symlink traversal.
 
     Args:
@@ -588,7 +591,7 @@ def read_text(path):
         return file_handle.read()
 
 
-def ensure_directory(path, check_mode):
+def ensure_directory(path: PathLike, check_mode: bool) -> bool:
     """Ensure a safe workdir directory exists.
 
     Args:
@@ -611,7 +614,7 @@ def ensure_directory(path, check_mode):
     return True
 
 
-def ensure_vagrantfile(path, content, check_mode):
+def ensure_vagrantfile(path: PathLike, content: str, check_mode: bool) -> bool:
     """Ensure the Vagrantfile at `path` matches the rendered content.
 
     Args:
@@ -649,7 +652,7 @@ def ensure_vagrantfile(path, content, check_mode):
     return changed
 
 
-def safe_rmtree(path):
+def safe_rmtree(path: PathLike) -> bool:
     """Remove a validated workdir directory tree.
 
     Args:
@@ -669,7 +672,7 @@ def safe_rmtree(path):
     return False
 
 
-def get_vagrant_status(client, name):
+def get_vagrant_status(client: Any, name: str) -> StatusDict:
     """Return normalized Vagrant status information for a managed VM.
 
     Args:
@@ -696,7 +699,7 @@ def get_vagrant_status(client, name):
     }
 
 
-def vm_exists(status):
+def vm_exists(status: Mapping[str, Optional[str]]) -> bool:
     """Check whether a VM has been created according to its status payload.
 
     Args:
@@ -708,7 +711,7 @@ def vm_exists(status):
     return status.get("state") not in (None, STATE_NOT_CREATED)
 
 
-def vm_running(status):
+def vm_running(status: Mapping[str, Optional[str]]) -> bool:
     """Check whether a VM is currently running.
 
     Args:
@@ -720,7 +723,7 @@ def vm_running(status):
     return status.get("state") == STATE_RUNNING
 
 
-def collect_ssh_facts(client, name):
+def collect_ssh_facts(client: Any, name: str) -> Optional[Dict[str, Any]]:
     """Collect SSH connection details for a managed VM.
 
     Args:
@@ -742,7 +745,13 @@ def collect_ssh_facts(client, name):
         return None
 
 
-def predict_changed(state, config_changed, status, cleanup_workdir, workdir_exists):
+def predict_changed(
+    state: str,
+    config_changed: bool,
+    status: Mapping[str, Optional[str]],
+    cleanup_workdir: bool,
+    workdir_exists: bool,
+) -> bool:
     """Predict whether the requested operation would report a change.
 
     Args:
@@ -771,7 +780,7 @@ def predict_changed(state, config_changed, status, cleanup_workdir, workdir_exis
     return False
 
 
-def predict_effective_state(state, status):
+def predict_effective_state(state: str, status: Mapping[str, Optional[str]]) -> str:
     """Predict the VM state after applying the requested action.
 
     Args:
@@ -800,7 +809,7 @@ def predict_effective_state(state, status):
     return current_state
 
 
-def validate_params(module, params):
+def validate_params(module: AnsibleModule, params: MutableMapping[str, Any]) -> None:
     """Validate cross-field module parameters and fail fast on invalid input.
 
     Args:
@@ -834,7 +843,7 @@ def validate_params(module, params):
             module.fail_json(msg="environment values must be strings")
 
 
-def run_module():
+def run_module() -> None:
     module = AnsibleModule(
         argument_spec={
             "state": {
@@ -1025,7 +1034,7 @@ def run_module():
     module.exit_json(**result)
 
 
-def main():
+def main() -> None:
     run_module()
 
 
