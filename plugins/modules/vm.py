@@ -264,6 +264,7 @@ import shutil
 import stat
 import tempfile
 from copy import deepcopy
+from pathlib import Path
 
 from ansible.module_utils.basic import AnsibleModule
 
@@ -280,13 +281,10 @@ def managed_workdir_root():
     """Return the root directory for module-managed Vagrant workdirs.
 
     Returns:
-        str: Absolute path to the managed workdir root under the current
-            user's home directory, or under `/` when `HOME` is unset.
+        Path: Absolute path to the managed workdir root under the current
+            user's home directory.
     """
-    home = os.environ.get("HOME")
-    if not home:
-        home = os.path.abspath(os.sep)
-    return os.path.join(home, ".cache", "ansible", "community.vagrant")
+    return Path.home() / ".cache" / "ansible" / "community.vagrant"
 
 
 def default_workdir(name):
@@ -296,9 +294,9 @@ def default_workdir(name):
         name (str): Managed VM name.
 
     Returns:
-        str: Default workdir path for the VM.
+        Path: Default workdir path for the VM.
     """
-    return os.path.join(managed_workdir_root(), name)
+    return managed_workdir_root() / name
 
 
 def normalize_state(state):
@@ -492,32 +490,15 @@ def lstat_path(path):
     """Return `os.lstat` metadata for a path when it exists.
 
     Args:
-        path (str): Filesystem path to inspect.
+        path (str | Path): Filesystem path to inspect.
 
     Returns:
         os.stat_result | None: Path metadata, or `None` when the path does not
             exist.
     """
     try:
-        return os.lstat(path)
+        return Path(path).lstat()
     except FileNotFoundError:
-        return None
-
-
-def common_path(path_a, path_b):
-    """Safely compute the common path prefix for two paths.
-
-    Args:
-        path_a (str): First path.
-        path_b (str): Second path.
-
-    Returns:
-        str | None: Common path prefix, or `None` when the paths are on
-            incompatible roots.
-    """
-    try:
-        return os.path.commonpath((path_a, path_b))
-    except ValueError:
         return None
 
 
@@ -525,17 +506,20 @@ def workdir_cleanup_allowed(path):
     """Check whether a workdir path is eligible for recursive deletion.
 
     Args:
-        path (str): Workdir path requested for cleanup.
+        path (str | Path): Workdir path requested for cleanup.
 
     Returns:
         bool: `True` when the path is a non-symlink directory under the
             module-managed cache root and is not the root itself.
     """
-    managed_root = os.path.realpath(managed_workdir_root())
-    resolved = os.path.realpath(path)
-    if resolved in (os.path.realpath(os.sep), managed_root):
+    managed_root = managed_workdir_root().resolve()
+    candidate = Path(path)
+    resolved = candidate.resolve()
+    if resolved in (Path("/"), managed_root):
         return False
-    if common_path(managed_root, resolved) != managed_root:
+    try:
+        resolved.relative_to(managed_root)
+    except ValueError:
         return False
     metadata = lstat_path(path)
     if metadata is not None and stat.S_ISLNK(metadata.st_mode):
@@ -549,7 +533,7 @@ def ensure_safe_workdir(path):
     """Validate that an existing workdir path is a real directory.
 
     Args:
-        path (str): Workdir path to validate.
+        path (str | Path): Workdir path to validate.
 
     Returns:
         os.stat_result | None: Metadata for the existing directory, or `None`
@@ -572,7 +556,7 @@ def read_text(path):
     """Read a regular file while defending against symlink traversal.
 
     Args:
-        path (str): File path to read.
+        path (str | Path): File path to read.
 
     Returns:
         str | None: File content, or `None` when the file does not exist.
@@ -581,6 +565,7 @@ def read_text(path):
         ValueError: If the path is not a regular file or cannot be opened
             safely.
     """
+    path = Path(path)
     metadata = lstat_path(path)
     if metadata is None:
         return None
@@ -607,7 +592,7 @@ def ensure_directory(path, check_mode):
     """Ensure a safe workdir directory exists.
 
     Args:
-        path (str): Directory path to create if needed.
+        path (str | Path): Directory path to create if needed.
         check_mode (bool): Whether the module is running in check mode.
 
     Returns:
@@ -622,7 +607,7 @@ def ensure_directory(path, check_mode):
         return False
     if check_mode:
         return True
-    os.makedirs(path)
+    Path(path).mkdir(parents=True)
     return True
 
 
@@ -630,7 +615,7 @@ def ensure_vagrantfile(path, content, check_mode):
     """Ensure the Vagrantfile at `path` matches the rendered content.
 
     Args:
-        path (str): Target Vagrantfile path.
+        path (str | Path): Target Vagrantfile path.
         content (str): Desired file content.
         check_mode (bool): Whether the module is running in check mode.
 
@@ -642,23 +627,25 @@ def ensure_vagrantfile(path, content, check_mode):
         ValueError: If the existing file cannot be read safely.
         OSError: If writing the updated file fails.
     """
+    path = Path(path)
     current = read_text(path)
     changed = current != content
     if changed and not check_mode:
         file_handle = None
         temporary_path = None
         try:
-            file_descriptor, temporary_path = tempfile.mkstemp(prefix=".community-vagrant.", dir=os.path.dirname(path))
+            file_descriptor, temporary_path_raw = tempfile.mkstemp(prefix=".community-vagrant.", dir=str(path.parent))
+            temporary_path = Path(temporary_path_raw)
             file_handle = os.fdopen(file_descriptor, "w", encoding="utf-8")
             file_handle.write(content)
             file_handle.close()
             file_handle = None
-            os.replace(temporary_path, path)
+            temporary_path.replace(path)
         finally:
             if file_handle is not None:
                 file_handle.close()
-            if temporary_path is not None and os.path.exists(temporary_path):
-                os.unlink(temporary_path)
+            if temporary_path is not None and temporary_path.exists():
+                temporary_path.unlink()
     return changed
 
 
@@ -666,7 +653,7 @@ def safe_rmtree(path):
     """Remove a validated workdir directory tree.
 
     Args:
-        path (str): Directory path to remove.
+        path (str | Path): Directory path to remove.
 
     Returns:
         bool: `True` when the directory existed and was removed, otherwise
@@ -898,14 +885,17 @@ def run_module():
     )
 
     params = deepcopy(module.params)
-    params["workdir"] = os.path.abspath(params["workdir"] or default_workdir(params["name"]))
+    workdir = Path(params["workdir"] or default_workdir(params["name"])).expanduser()
+    if not workdir.is_absolute():
+        workdir = Path.cwd() / workdir
+    params["workdir"] = workdir
     validate_params(module, params)
 
     result = {
         "changed": False,
         "name": params["name"],
         "state": params["state"],
-        "workdir": params["workdir"],
+        "workdir": str(params["workdir"]),
         "status": {
             "name": params["name"],
             "state": STATE_NOT_CREATED,
@@ -921,8 +911,8 @@ def run_module():
             module.fail_json(msg=str(exc), **result)
 
     workdir = params["workdir"]
-    vagrantfile_path = os.path.join(workdir, VAGRANTFILE_NAME)
-    workdir_exists = os.path.exists(workdir)
+    vagrantfile_path = workdir / VAGRANTFILE_NAME
+    workdir_exists = workdir.exists()
     config_changed = False
 
     if params["state"] != "absent":
@@ -935,7 +925,7 @@ def run_module():
 
     client = None
     status = result["status"]
-    can_query_vm = os.path.isfile(vagrantfile_path) or (params["state"] == "absent" and os.path.isdir(workdir))
+    can_query_vm = vagrantfile_path.is_file() or (params["state"] == "absent" and workdir.is_dir())
 
     if can_query_vm:
         try:
@@ -944,7 +934,7 @@ def run_module():
             module.fail_json(msg="python-vagrant is required for this module", **result)
 
         try:
-            client = vagrant_lib.Vagrant(root=workdir, quiet_stdout=True, quiet_stderr=True, env=params["environment"] or None)
+            client = vagrant_lib.Vagrant(root=str(workdir), quiet_stdout=True, quiet_stderr=True, env=params["environment"] or None)
             status = get_vagrant_status(client, params["name"])
         except Exception as exc:
             if params["state"] != "absent":
@@ -972,7 +962,7 @@ def run_module():
         except ImportError:
             module.fail_json(msg="python-vagrant is required for this module", **result)
         try:
-            client = vagrant_lib.Vagrant(root=workdir, quiet_stdout=True, quiet_stderr=True, env=params["environment"] or None)
+            client = vagrant_lib.Vagrant(root=str(workdir), quiet_stdout=True, quiet_stderr=True, env=params["environment"] or None)
             status = get_vagrant_status(client, params["name"])
             result["status"] = status
         except Exception as exc:
@@ -1018,7 +1008,7 @@ def run_module():
     except Exception as exc:
         module.fail_json(msg="Failed to converge VM state: {0}".format(exc), **result)
 
-    if os.path.isfile(vagrantfile_path) and state != "absent":
+    if vagrantfile_path.is_file() and state != "absent":
         try:
             status = get_vagrant_status(client, params["name"])
             result["status"] = status
